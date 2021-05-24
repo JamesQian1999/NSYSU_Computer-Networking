@@ -56,13 +56,15 @@ char *DNS(char url[888], char *ipstr)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    printf("url: %s\n", url);
-    getaddrinfo(url, NULL, &hints, &servinfo);
+    if(getaddrinfo(url, NULL, &hints, &servinfo)!=0)
+    {
+        strcpy(ipstr, "Invaild format or Invaild domain name.");
+        return ipstr;
+    }
 
     struct sockaddr_in *ipv4 = (struct sockaddr_in *)servinfo->ai_addr;
     void *addr = &(ipv4->sin_addr);
     inet_ntop(hints.ai_family, addr, ipstr, INET6_ADDRSTRLEN);
-    printf("IP(func): %s\n", ipstr);
     return ipstr;
 }
 
