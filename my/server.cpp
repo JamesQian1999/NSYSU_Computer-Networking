@@ -88,20 +88,20 @@ int main(void)
 
     if ((rv = getaddrinfo(NULL, SERVERPORT, &hints, &servinfo)) != 0)
     {
-        printf("Server getaddrinfo error\n");
+        printf("Server getaddrinfo error.\n");
         exit(1);
     }
 
     if ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) == -1)
     {
-        printf("Server socket error\n");
+        printf("Server socket error.\n");
         exit(1);
     }
 
     if (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
     {
         close(sockfd);
-        printf("Server bind error\n");
+        printf("Server bind error.\n");
         exit(1);
     }
     freeaddrinfo(servinfo);
@@ -115,7 +115,7 @@ int main(void)
         // 3 way handshake (receive SYN)
         if ((numbytes = recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len)) == -1)
         {
-            perror("Receive ERROR\n");
+            perror("Receive error.\n");
             continue;
         }
 
@@ -142,20 +142,20 @@ int main(void)
 
             if ((rv = getaddrinfo(NULL, SERVERPORT, &hints, &servinfo)) != 0)
             {
-                printf("Connet getaddrinfo error\n");
+                printf("Connet getaddrinfo error.\n");
                 exit(1);
             }
 
             if ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) == -1)
             {
-                printf("Connet socket error\n");
+                printf("Connet socket error.\n");
                 exit(1);
             }
 
             if (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
             {
                 close(sockfd);
-                printf("Connet bind error\n");
+                printf("Connet bind error.\n");
                 exit(1);
             }
 
@@ -175,6 +175,10 @@ int main(void)
 
             char ipstr[INET6_ADDRSTRLEN];
             printf("IP: %s\n", DNS(pch, ipstr));
+            reset(&package);
+            strcat(package.data,ipstr);
+            cout<<"data: "<<package.data<<endl;
+            sendto(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, their_addr_len);
             /* test DNS */
 
             while (1)

@@ -49,6 +49,8 @@ int main(int argc, char *argv[])
     char SERVERPORT[5] = "4950"; // 使用者所要連線的 port
     int sockfd;
     struct addrinfo hints, *servinfo;
+    struct sockaddr_storage their_addr;
+    socklen_t their_addr_len;
     int rv;
     int numbytes;
 
@@ -64,13 +66,13 @@ int main(int argc, char *argv[])
 
     if ((rv = getaddrinfo(argv[1], SERVERPORT, &hints, &servinfo)) != 0)
     {
-        printf("getaddrinfo error\n");
+        printf("getaddrinfo error.\n");
         exit(1);
     }
 
     if ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) == -1)
     {
-        printf("Server socket error\n");
+        printf("Server socket error.\n");
         exit(1);
     }
     freeaddrinfo(servinfo);
@@ -89,8 +91,6 @@ int main(int argc, char *argv[])
     else
     {
         reset(&handshake);
-        struct sockaddr_storage their_addr;
-        socklen_t their_addr_len;
         numbytes = recvfrom(sockfd, (char *)&handshake, sizeof(handshake), 0, (struct sockaddr *)&their_addr, &their_addr_len);
         printf("Receive package(SYN/ACK) from %s : %s\n", argv[1], SERVERPORT);
         printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", handshake.seq_num, handshake.ack_num);
@@ -101,9 +101,10 @@ int main(int argc, char *argv[])
         sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
 
         //sent request
+        reset(&package);
         char num[50] = {0};
-        sprintf(num, "%d", (argc - 2) / 2);     //caculate request num 
-        strcat(package.data, num);              //request num
+        sprintf(num, "%d", (argc - 2) / 2); //caculate request num
+        strcat(package.data, num);          //request num
         for (int i = 2; i < argc; i++)
         {
             strcat(package.data, " ");
@@ -111,27 +112,67 @@ int main(int argc, char *argv[])
         }
 
         sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+        reset(&package);
     }
 
-    while (1)
+    for (int i = 1; i <= (argc - 2) / 2; i++)
     {
-        char msg[100];
-        cout << "Enter the message: ";
-        cin >> msg;
-        Package package;
-        strncpy(package.data, msg, sizeof(package.data) - 1);
-        if ((numbytes = sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen)) == -1)
+        char flag[5] = {0}, option[500] = {0};
+        strcat(flag, argv[i * 2]);
+        strcat(option, argv[i * 2 + 1]);
+        cout << "flag = " << flag << endl;
+        if (flag[1] == 'f') // -f
         {
-
-            perror("talker: sendto");
-            exit(1);
         }
-        printf("talker: sent %d bytes to %s\n", numbytes, argv[1]);
-        char buf[MAXBUFLEN];
-        struct sockaddr_storage their_addr;
-        socklen_t their_addr_len = sizeof their_addr;
-        //numbytes = recvfrom(sockfd, buf, MAXBUFLEN - 1, 0, (struct sockaddr *)&their_addr, &their_addr_len);
+        else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // -DNS
+        {
+            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+            cout << "data: " << package.data << endl;
+        }
+        else if (flag[1] == 'a' && flag[2] == 'd' && flag[3] == 'd') // -add
+        {
+        }
+        else if (flag[1] == 's' && flag[2] == 'u' && flag[3] == 'b') // -sub
+        {
+        }
+        else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // -mul
+        {
+        }
+        else if (flag[1] == 'd' && flag[2] == 'i' && flag[3] == 'v') // -div
+        {
+        }
+        else if (flag[1] == 'p' && flag[2] == 'o' && flag[3] == 'w') // -pow
+        {
+        }
+        else if (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // -sqr
+        {
+        }
+        else // error
+        {
+            printf("Invaild flag.\n");
+            continue;
+        }
     }
+
+    // while (1)
+    // {
+    //     char msg[100];
+    //     cout << "Enter the message: ";
+    //     cin >> msg;
+    //     Package package;
+    //     strncpy(package.data, msg, sizeof(package.data) - 1);
+    //     if ((numbytes = sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen)) == -1)
+    //     {
+
+    //         perror("talker: sendto");
+    //         exit(1);
+    //     }
+    //     printf("talker: sent %d bytes to %s\n", numbytes, argv[1]);
+    //     char buf[MAXBUFLEN];
+    //     struct sockaddr_storage their_addr;
+    //     socklen_t their_addr_len = sizeof their_addr;
+    //     //numbytes = recvfrom(sockfd, buf, MAXBUFLEN - 1, 0, (struct sockaddr *)&their_addr, &their_addr_len);
+    // }
 
     close(sockfd);
     return 0;
