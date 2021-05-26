@@ -116,21 +116,17 @@ void caculate(Package *sent_package, const char *pch, char op)
 
 int main(void)
 {
-    char SERVERPORT[5] = "4950"; // 使用者所要連線的 port
-    int sockfd;
+    char SERVERPORT[5] = "4950"; // receiving port
+    int sockfd, rv, numbytes;
     struct addrinfo hints, *servinfo, *p;
-    int rv;
-    int numbytes;
     struct sockaddr_storage their_addr;
-    char buf[MAXBUFLEN];
     socklen_t their_addr_len;
-    char s[INET6_ADDRSTRLEN];
+    char buf[MAXBUFLEN], s[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
-
-    hints.ai_family = AF_INET; // IPv4
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_flags = AI_PASSIVE; // 使用我的 IP
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM; // UDP
+    hints.ai_flags = AI_PASSIVE;    // my address
 
     if ((rv = getaddrinfo(NULL, SERVERPORT, &hints, &servinfo)) != 0)
     {
@@ -262,7 +258,7 @@ int main(void)
                 else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // e.g. -mul -2*2
                 {
                     pch = strtok(NULL, " ");
-                    
+
                     caculate(&sent_package, pch, '*');
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                 }

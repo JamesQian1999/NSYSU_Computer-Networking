@@ -46,15 +46,13 @@ void reset(Package *p)
 
 int main(int argc, char *argv[])
 {
-    char SERVERPORT[5] = "4950"; // 使用者所要連線的 port
-    int sockfd;
+    char SERVERPORT[5] = "4950", SERVERPORT_[5] = "4950"; // server port
+    int sockfd, rv, numbytes;
     struct addrinfo hints, *servinfo;
     struct sockaddr_storage their_addr;
     socklen_t their_addr_len;
-    int rv;
-    int numbytes;
 
-    if (argc < 2 || argc % 2) //172.20.10.7 -f 1.mp4 -d www.google.com
+    if (argc < 2 || argc % 2) //172.20.10.7 -f 1.mp4 -DNS www.google.com
     {
         printf("Invaild format.\n");
         exit(1);
@@ -94,7 +92,6 @@ int main(int argc, char *argv[])
         numbytes = recvfrom(sockfd, (char *)&handshake, sizeof(handshake), 0, (struct sockaddr *)&their_addr, &their_addr_len);
         printf("Receive package(SYN/ACK) from %s : %s\n", argv[1], SERVERPORT);
         printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", handshake.seq_num, handshake.ack_num);
-        printf("\033[33m====Complete the three-way handshake====\033[m\n");
 
         strncpy(SERVERPORT, handshake.data, sizeof(SERVERPORT) - 1);
         getaddrinfo(argv[1], SERVERPORT, &hints, &servinfo);
@@ -113,6 +110,11 @@ int main(int argc, char *argv[])
 
         sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         reset(&package);
+
+        char s[INET6_ADDRSTRLEN];
+        inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+        printf("Sent package(SYN) to %s : %s\n", s, SERVERPORT_);
+        printf("\033[33m====Complete the three-way handshake====\033[m\n");
     }
 
     for (int i = 1; i <= (argc - 2) / 2; i++)
