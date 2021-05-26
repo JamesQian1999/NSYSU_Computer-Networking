@@ -44,19 +44,19 @@ void reset(Package *p)
     p->SYN = 0;
     p->FIN = 0;
     p->window_size = 0;
-    memset(&p->data, 0, sizeof p->data);
+    memset(&p->data, 0, sizeof(p->data));
 }
 
-char *DNS(char url[888], char *ipstr)
+char *DNS(const char *url, char *ipstr)
 {
     struct addrinfo hints;
     struct addrinfo *servinfo;
-    memset(&hints, 0, sizeof hints);
+    memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    if(getaddrinfo(url, NULL, &hints, &servinfo)!=0)
+    if (getaddrinfo(url, NULL, &hints, &servinfo) != 0)
     {
         strcpy(ipstr, "Invaild format or Invaild domain name.");
         return ipstr;
@@ -66,6 +66,52 @@ char *DNS(char url[888], char *ipstr)
     void *addr = &(ipv4->sin_addr);
     inet_ntop(hints.ai_family, addr, ipstr, INET6_ADDRSTRLEN);
     return ipstr;
+}
+
+void caculate(Package *sent_package, const char *pch, char op)
+{
+    char a[50] = {0}, b[50] = {0}, tmp[100], bit;
+    int count = 0, operend = 0, after_op = 0, flag = 1;
+    memset(tmp, '\0', 100);
+    sprintf(tmp, "%s", pch);
+    while (tmp[count] != '\0')
+    {
+        if (tmp[count] == op && count != 0 && count != after_op)
+        {
+            after_op = ++count;
+            flag = 0;
+            operend = 0;
+            continue;
+        }
+        if (flag)
+            a[operend++] = tmp[count++];
+        else
+            b[operend++] = tmp[count++];
+    }
+    cout << "a = " << a << ", b = " << b << endl;
+    float a_f, b_f;
+    sscanf(a, "%f", &a_f);
+    sscanf(b, "%f", &b_f);
+    float ans;
+    switch (op)
+    {
+    case '+':
+        ans = a_f + b_f;
+        break;
+    case '-':
+        ans = a_f - b_f;
+        break;
+    case '*':
+        ans = a_f * b_f;
+        break;
+    case '/':
+        ans = a_f / b_f;
+        break;
+    }
+    if (flag)
+        sprintf(sent_package->data, "%s", "error.");
+    else
+        sprintf(sent_package->data, "%.5f", ans);
 }
 
 int main(void)
@@ -106,7 +152,7 @@ int main(void)
     }
     freeaddrinfo(servinfo);
 
-    printf("\033[33mServer is ready......\033[m\n\n");
+    printf("\033[33mServer is ready......\033[m\n");
     their_addr_len = sizeof their_addr;
 
     while (1)
@@ -166,26 +212,77 @@ int main(void)
             sscanf(package.data, "%d", &num); // receive request num
 
             /* test DNS */
-            char *pch = strtok(package.data, " ");
-            for (int i = 0; i < 2*num; i++)
-            {
-                pch = strtok(NULL, " ");
-                printf("%s\n", pch);
-            }
+            // char *pch = strtok(package.data, " ");
+            // for (int i = 0; i < 2 * num; i++)
+            // {
+            //     pch = strtok(NULL, " ");
+            //     printf("%s\n", pch);
+            // }
 
-            char ipstr[INET6_ADDRSTRLEN];
-            printf("IP: %s\n", DNS(pch, ipstr));
-            reset(&package);
-            strcat(package.data,ipstr);
-            cout<<"data: "<<package.data<<endl;
-            sendto(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+            // char ipstr[INET6_ADDRSTRLEN];
+            // printf("IP: %s\n", DNS(pch, ipstr));
+            // reset(&package);
+            // strcat(package.data, ipstr);
+            // cout << "data: " << package.data << endl;
+            // sendto(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, their_addr_len);
             /* test DNS */
 
-            while (1)
+            printf("request: %s\n", package.data);
+            char *pch = strtok(package.data, " ");
+            for (int i = 1; i <= num; i++)
             {
-                numbytes = recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-                printf("\tReceive : %s\n", package.data);
+                Package sent_package;
+                char *flag, *option;
+                pch = strtok(NULL, " ");
+                flag = pch;
+                cout << "fag = " << flag << endl;
+                if (flag[1] == 'f') // -f
+                {
+                }
+                else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
+                {
+                    pch = strtok(NULL, " ");
+                    char ipstr[INET6_ADDRSTRLEN];
+                    strcpy(sent_package.data, DNS(pch, ipstr));
+                    cout << "sent: " << sent_package.data << endl;
+                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                }
+                else if (flag[1] == 'a' && flag[2] == 'd' && flag[3] == 'd') // e.g. -add 12+23
+                {
+                    pch = strtok(NULL, " ");
+                    caculate(&sent_package, pch, '+');
+                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                }
+                else if (flag[1] == 's' && flag[2] == 'u' && flag[3] == 'b') // e.g. -sub 12-23
+                {
+                    pch = strtok(NULL, " ");
+                    caculate(&sent_package, pch, '-');
+                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                }
+                else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // e.g. -mul -2*2
+                {
+                    pch = strtok(NULL, " ");
+                    
+                    caculate(&sent_package, pch, '*');
+                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                }
+                else if (flag[1] == 'd' && flag[2] == 'i' && flag[3] == 'v') // e.g. -div 9/2
+                {
+                    pch = strtok(NULL, " ");
+                    caculate(&sent_package, pch, '/');
+                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                }
+                else if (flag[1] == 'p' && flag[2] == 'o' && flag[3] == 'w') // e.g. -pow 5
+                {
+                }
+                else if (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // e.g. -sqr 2
+                {
+                }
+                else // error
+                {
+                    printf("Invaild flag.\n");
+                    continue;
+                }
             }
 
             exit(0);

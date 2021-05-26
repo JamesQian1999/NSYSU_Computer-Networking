@@ -41,7 +41,7 @@ void reset(Package *p)
     p->SYN = 0;
     p->FIN = 0;
     p->window_size = 0;
-    memset(&p->data, 0, sizeof p->data);
+    memset(&p->data, 0, sizeof(p->data));
 }
 
 int main(int argc, char *argv[])
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    memset(&hints, 0, sizeof hints);
+    memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
 
@@ -121,30 +121,39 @@ int main(int argc, char *argv[])
         strcat(flag, argv[i * 2]);
         strcat(option, argv[i * 2 + 1]);
         cout << "flag = " << flag << endl;
+        cout << "option = " << option << endl;
         if (flag[1] == 'f') // -f
         {
         }
-        else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // -DNS
+        else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
         {
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
             cout << "data: " << package.data << endl;
         }
-        else if (flag[1] == 'a' && flag[2] == 'd' && flag[3] == 'd') // -add
+        else if (flag[1] == 'a' && flag[2] == 'd' && flag[3] == 'd') // e.g. -add 12+23
+        {
+            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+            cout << "data: " << package.data << endl;
+        }
+        else if (flag[1] == 's' && flag[2] == 'u' && flag[3] == 'b') // e.g. -sub 12-23
+        {
+            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+            cout << "data: " << package.data << endl;
+        }
+        else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // e.g. -mul -2*2
+        {
+            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+            cout << "data: " << package.data << endl;
+        }
+        else if (flag[1] == 'd' && flag[2] == 'i' && flag[3] == 'v') // e.g. -div 9/2
+        {
+            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+            cout << "data: " << package.data << endl;
+        }
+        else if (flag[1] == 'p' && flag[2] == 'o' && flag[3] == 'w') // e.g. -pow 5
         {
         }
-        else if (flag[1] == 's' && flag[2] == 'u' && flag[3] == 'b') // -sub
-        {
-        }
-        else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // -mul
-        {
-        }
-        else if (flag[1] == 'd' && flag[2] == 'i' && flag[3] == 'v') // -div
-        {
-        }
-        else if (flag[1] == 'p' && flag[2] == 'o' && flag[3] == 'w') // -pow
-        {
-        }
-        else if (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // -sqr
+        else if (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // e.g. -sqr 2
         {
         }
         else // error
@@ -153,26 +162,6 @@ int main(int argc, char *argv[])
             continue;
         }
     }
-
-    // while (1)
-    // {
-    //     char msg[100];
-    //     cout << "Enter the message: ";
-    //     cin >> msg;
-    //     Package package;
-    //     strncpy(package.data, msg, sizeof(package.data) - 1);
-    //     if ((numbytes = sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen)) == -1)
-    //     {
-
-    //         perror("talker: sendto");
-    //         exit(1);
-    //     }
-    //     printf("talker: sent %d bytes to %s\n", numbytes, argv[1]);
-    //     char buf[MAXBUFLEN];
-    //     struct sockaddr_storage their_addr;
-    //     socklen_t their_addr_len = sizeof their_addr;
-    //     //numbytes = recvfrom(sockfd, buf, MAXBUFLEN - 1, 0, (struct sockaddr *)&their_addr, &their_addr_len);
-    // }
 
     close(sockfd);
     return 0;
