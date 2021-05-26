@@ -22,7 +22,7 @@ public:
     unsigned short source_port = 0;
     unsigned int seq_num = 0;
     unsigned int ack_num = 0;
-    unsigned char header_length = 0;
+    unsigned char header_length = 20;
     bool ACK = 0;
     bool SYN = 0;
     bool FIN = 0;
@@ -36,7 +36,7 @@ void reset(Package *p)
     p->source_port = 0;
     p->seq_num = 0;
     p->ack_num = 0;
-    p->header_length = 0;
+    p->header_length = 20;
     p->ACK = 0;
     p->SYN = 0;
     p->FIN = 0;
@@ -119,44 +119,44 @@ int main(int argc, char *argv[])
 
     for (int i = 1; i <= (argc - 2) / 2; i++)
     {
-        char flag[5] = {0}, option[500] = {0};
+        char flag[5] = {0}, option[500] = {0}, s[INET6_ADDRSTRLEN];
         strcat(flag, argv[i * 2]);
         strcat(option, argv[i * 2 + 1]);
-        cout << "flag = " << flag << endl;
-        cout << "option = " << option << endl;
-        if (flag[1] == 'f') // -f
+        //cout << "flag = " << flag << ",  option = " << option << endl;
+        if (flag[1] == 'f') // e.g. -f 1.mp4
         {
+            FILE *fptr = fopen(option, "wb");
+            while (1)
+            {
+                recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+            }
         }
         else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
         {
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            cout << "data: " << package.data << endl;
+            inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+            printf("Receive package(SYN/ACK) from %s : %s\n", s, SERVERPORT_);
+            printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
+            printf("\treceived:\" %s \"\n", package.data);
+            reset(&package);
+            sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
-        else if (flag[1] == 'a' && flag[2] == 'd' && flag[3] == 'd') // e.g. -add 12+23
+        else if (
+            (flag[1] == 'a' && flag[2] == 'd' && flag[3] == 'd')    // e.g. -add 12+23
+            || (flag[1] == 's' && flag[2] == 'u' && flag[3] == 'b') // e.g. -sub 12-23
+            || (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // e.g. -mul -2*2
+            || (flag[1] == 'd' && flag[2] == 'i' && flag[3] == 'v') // e.g. -div 9/2
+            || (flag[1] == 'p' && flag[2] == 'o' && flag[3] == 'w') // e.g. -pow 5^2
+            || (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // e.g. -sqrt 2
+        )
         {
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            cout << "data: " << package.data << endl;
-        }
-        else if (flag[1] == 's' && flag[2] == 'u' && flag[3] == 'b') // e.g. -sub 12-23
-        {
-            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            cout << "data: " << package.data << endl;
-        }
-        else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // e.g. -mul -2*2
-        {
-            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            cout << "data: " << package.data << endl;
-        }
-        else if (flag[1] == 'd' && flag[2] == 'i' && flag[3] == 'v') // e.g. -div 9/2
-        {
-            recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            cout << "data: " << package.data << endl;
-        }
-        else if (flag[1] == 'p' && flag[2] == 'o' && flag[3] == 'w') // e.g. -pow 5
-        {
-        }
-        else if (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // e.g. -sqr 2
-        {
+            inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+            printf("Receive package(SYN/ACK) from %s : %s\n", s, SERVERPORT_);
+            printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
+            printf("\treceived:\" %s \"\n", package.data);
+            reset(&package);
+            sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
         else // error
         {
