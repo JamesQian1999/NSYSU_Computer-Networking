@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +23,7 @@ public:
     unsigned short source_port = 0;
     unsigned int seq_num = 0;
     unsigned int ack_num = 0;
-    unsigned char header_length = 20;
+    unsigned short data_size = 1024;
     bool ACK = 0;
     bool SYN = 0;
     bool FIN = 0;
@@ -36,7 +37,7 @@ void reset(Package *p)
     p->source_port = 0;
     p->seq_num = 0;
     p->ack_num = 0;
-    p->header_length = 20;
+    p->data_size = 1024;
     p->ACK = 0;
     p->SYN = 0;
     p->FIN = 0;
@@ -125,11 +126,26 @@ int main(int argc, char *argv[])
         //cout << "flag = " << flag << ",  option = " << option << endl;
         if (flag[1] == 'f') // e.g. -f 1.mp4
         {
-            FILE *fptr = fopen(option, "wb");
-            while (1)
+            char file_name[20] = {0};
+            strcpy(file_name, "received_");
+            strcat(file_name, option);
+
+            fstream file;
+            file.open(file_name, ios::out | ios::binary);
+            int FIN = 0, tmp_count = 1;
+
+            while (!FIN)
             {
                 recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                FIN = package.FIN;
+                cout << "received package " << tmp_count++ << " FIN = " << FIN << " package.data_size = " << package.data_size << endl;
+
+                for (int i = 0; i < package.data_size; i++)
+                    file << package.data[i];
+                reset(&package);
             }
+            cout << "received package FIN" << endl;
+            file.close();
         }
         else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
         {
@@ -137,7 +153,7 @@ int main(int argc, char *argv[])
             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
             printf("Receive package(SYN/ACK) from %s : %s\n", s, SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\treceived:\" %s \"\n", package.data);
+            printf("\treceived: \"%s\"\n", package.data);
             reset(&package);
             sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
@@ -154,7 +170,7 @@ int main(int argc, char *argv[])
             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
             printf("Receive package(SYN/ACK) from %s : %s\n", s, SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\treceived:\" %s \"\n", package.data);
+            printf("\treceived: \"%s\"\n", package.data);
             reset(&package);
             sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }

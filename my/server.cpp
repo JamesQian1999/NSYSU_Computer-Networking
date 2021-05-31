@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <math.h>
 #include <stdio.h>
@@ -26,7 +27,7 @@ public:
     unsigned short source_port = 0;
     unsigned int seq_num = 0;
     unsigned int ack_num = 0;
-    unsigned char header_length = 20;
+    unsigned short data_size = 1024;
     bool ACK = 0;
     bool SYN = 0;
     bool FIN = 0;
@@ -40,7 +41,7 @@ void reset(Package *p)
     p->source_port = 0;
     p->seq_num = 0;
     p->ack_num = 0;
-    p->header_length = 20;
+    p->data_size = 1024;
     p->ACK = 0;
     p->SYN = 0;
     p->FIN = 0;
@@ -231,8 +232,10 @@ int main(void)
                     char tmp[100] = {0};
                     pch = strtok(NULL, " ");
                     sprintf(tmp, "%s", pch);
-                    FILE *fptr = fopen(tmp, "rb");
-                    if (fptr == NULL) // File didn't exist.
+                    fstream file;
+                    file.open(tmp, ios::in | ios::binary);
+
+                    if (file.fail()) // File didn't exist.
                     {
                         printf("File %s didn't exist.\n", tmp);
                         strcpy(sent_package.data, "File didn't exist.");
@@ -241,14 +244,28 @@ int main(void)
                         sent_package.FIN = 1;
                         sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                     }
-                    while (1)
+
+                    char sent_byte;
+                    int count = 1, tmp_count = 1, ff = 1;
+                    while (file.get(sent_byte))
                     {
-                        int count = 1;
-                        while (count <= 1024)
+                        sent_package.data[count - 1] = sent_byte;
+
+                        if (count == 1024)
                         {
-                            
+                            sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                            cout << "sent package " << tmp_count++ << " package.data_size = " << sent_package.data_size << endl;
+                            reset(&sent_package);
+                            count = 1;
+                            usleep(2);
+                            continue;
                         }
+                        count++;
                     }
+                    sent_package.data_size = count - 1;
+                    sent_package.FIN = 1;
+                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                    cout << "sent package FIN  package.data_size = " << sent_package.data_size << endl;
                 }
                 else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
                 {
