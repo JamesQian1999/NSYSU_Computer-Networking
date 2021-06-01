@@ -97,7 +97,7 @@ void caculate(Package *sent_package, const char *pch, char op = 0)
         else
             b[operend++] = tmp[count++];
     }
-    cout << "a = " << a << ", b = " << b << endl;
+    //cout << "a = " << a << ", b = " << b << endl;
     sscanf(a, "%f", &a_f);
     sscanf(b, "%f", &b_f);
     switch (op)
@@ -225,7 +225,7 @@ int main(void)
                 char *flag, *option;
                 pch = strtok(NULL, " ");
                 flag = pch;
-                cout << "fag = " << flag << endl;
+                //cout << "fag = " << flag << endl;
                 if (flag[1] == 'f') // e.g. -f 1.mp4
                 {
                     int eof = 0, file_ptr = 1;
@@ -245,38 +245,95 @@ int main(void)
                         sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                     }
 
+                    // char sent_byte;
+                    // int byte_count = 1, packet_count = 1, turn = 0;
+                    // unsigned short seq_num = 1;
+                    // while (file.get(sent_byte))
+                    // {
+                    //     sent_package.data[byte_count - 1] = sent_byte;
+
+                    //     if (byte_count == 1024)
+                    //     {
+                    //         sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                    //         reset(&sent_package);
+                    //         usleep(5);
+                    //         if ((int)pow(2, turn) == packet_count)
+                    //         {
+                    //             printf("package turn %d\n", (int)pow(2, turn));
+                    //             for (int i = 0; i < pow(2, turn); i++)
+                    //             {
+                    //                 recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                    //                 cout << (int)pow(2, turn)-1 << " i = " << i << endl;
+                    //             }
+
+                    //             byte_count = 1;
+                    //             packet_count = 1;
+                    //             turn++;
+                    //             continue;
+                    //         }
+                    //         else
+                    //         {
+                    //             byte_count = 1;
+                    //             packet_count++;
+                    //             continue;
+                    //         }
+                    //     }
+                    //     byte_count++;
+                    // }
+                    // sent_package.data_size = byte_count - 1;
+                    // sent_package.FIN = 1;
+                    // sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+
                     char sent_byte;
-                    int count = 1, tmp_count = 1, ff = 1;
+                    int count = 1, tmp_count = 1, seq = 1;
                     while (file.get(sent_byte))
                     {
                         sent_package.data[count - 1] = sent_byte;
 
                         if (count == 1024)
                         {
+                            sent_package.seq_num = seq++;
+                            sent_package.ack_num = seq;
                             sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                            cout << "sent package " << tmp_count++ << " package.data_size = " << sent_package.data_size << endl;
+                            char s[INET6_ADDRSTRLEN];
+                            inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+                            printf("Seht a package to %s : \n", s);
                             reset(&sent_package);
+
+                            recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                            printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                             count = 1;
-                            usleep(2);
                             continue;
                         }
                         count++;
                     }
+                    sent_package.seq_num = seq++;
+                    sent_package.ack_num = seq;
                     sent_package.data_size = count - 1;
                     sent_package.FIN = 1;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                    cout << "sent package FIN  package.data_size = " << sent_package.data_size << endl;
+                    char s[INET6_ADDRSTRLEN];
+                    inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+                    printf("Seht a package to %s : \n", s);
+
+                    recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                    printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                 }
                 else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
                 {
                     pch = strtok(NULL, " ");
                     char ipstr[INET6_ADDRSTRLEN];
                     strcpy(sent_package.data, DNS(pch, ipstr));
-                    cout << "sent: " << sent_package.data << endl;
+                    //cout << "sent: " << sent_package.data << endl;
                     sent_package.ack_num = rand() % 10000 + 1;
                     sent_package.seq_num = 1;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                    char s[INET6_ADDRSTRLEN];
+                    inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+                    printf("Seht a package to %s : \n", s);
+
                     recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                    printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                 }
                 else
                 {
@@ -308,7 +365,12 @@ int main(void)
                     sent_package.ack_num = rand() % 10000 + 1;
                     sent_package.seq_num = 1;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                    char s[INET6_ADDRSTRLEN];
+                    inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+                    printf("Seht a package to %s : \n", s);
+
                     recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                    printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                 }
             }
 

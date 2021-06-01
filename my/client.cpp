@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
     }
     freeaddrinfo(servinfo);
 
-    //3 way handshake
+    //3-way handshake START
     printf("\033[33m=====Start the three-way handshake======\033[m\n");
     printf("Sent package(SYN) to %s : %s\n", argv[1], SERVERPORT);
     Package handshake, package;
@@ -117,6 +117,7 @@ int main(int argc, char *argv[])
         printf("Sent package(SYN) to %s : %s\n", s, SERVERPORT_);
         printf("\033[33m====Complete the three-way handshake====\033[m\n");
     }
+    //3-way handshake END
 
     for (int i = 1; i <= (argc - 2) / 2; i++)
     {
@@ -126,35 +127,42 @@ int main(int argc, char *argv[])
         //cout << "flag = " << flag << ",  option = " << option << endl;
         if (flag[1] == 'f') // e.g. -f 1.mp4
         {
+            printf("\032[30mReceiving %s form %s : %s\033[m\n", option, argv[1], SERVERPORT_);
             char file_name[20] = {0};
             strcpy(file_name, "received_");
             strcat(file_name, option);
 
             fstream file;
             file.open(file_name, ios::out | ios::binary);
-            int FIN = 0, tmp_count = 1;
+            int FIN = 0;
 
             while (!FIN)
             {
                 recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
                 FIN = package.FIN;
-                cout << "received package " << tmp_count++ << " FIN = " << FIN << " package.data_size = " << package.data_size << endl;
-
+                printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
                 for (int i = 0; i < package.data_size; i++)
                     file << package.data[i];
+
+                unsigned short seq = package.seq_num, ack = package.seq_num + 1;
                 reset(&package);
+
+                package.seq_num = seq;
+                package.ack_num = ack;
+                sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
             }
-            cout << "received package FIN" << endl;
+            printf("\tFinish receiving.\n");
             file.close();
         }
         else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
         {
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-            printf("Receive package(SYN/ACK) from %s : %s\n", s, SERVERPORT_);
+            printf("\033[32mReceive a DNS result from %s : %s\033[m\n", s, SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\treceived: \"%s\"\n", package.data);
+            printf("\treceived: %s\n", package.data);
             reset(&package);
+            package.ack_num = 1;
             sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
         else if (
@@ -168,10 +176,11 @@ int main(int argc, char *argv[])
         {
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-            printf("Receive package(SYN/ACK) from %s : %s\n", s, SERVERPORT_);
+            printf("\033[32mReceive a calculation result from %s : %s\033[m\n", s, SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\treceived: \"%s\"\n", package.data);
+            printf("\treceived: %s\n", package.data);
             reset(&package);
+            package.ack_num = 1;
             sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
         else // error
