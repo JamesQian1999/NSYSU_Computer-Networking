@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <time.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +28,7 @@ public:
     unsigned short source_port = 0;
     unsigned int seq_num = 0;
     unsigned int ack_num = 0;
+    unsigned int check_sum = 0;
     unsigned short data_size = 1024;
     bool ACK = 0;
     bool SYN = 0;
@@ -41,6 +43,7 @@ void reset(Package *p)
     p->source_port = 0;
     p->seq_num = 0;
     p->ack_num = 0;
+    p->check_sum = 0;
     p->data_size = 1024;
     p->ACK = 0;
     p->SYN = 0;
@@ -97,7 +100,6 @@ void caculate(Package *sent_package, const char *pch, char op = 0)
         else
             b[operend++] = tmp[count++];
     }
-    //cout << "a = " << a << ", b = " << b << endl;
     sscanf(a, "%f", &a_f);
     sscanf(b, "%f", &b_f);
     switch (op)
@@ -182,12 +184,13 @@ int main(void)
         {
             //printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof s));
             printf("\tReceive a package (SYN)\n");
-
-            int client_isn = package.seq_num;
+            srand(time(NULL));
+            int SEQ = rand() % 10000 + 1, ACK;
+            ACK = ++package.seq_num;
             reset(&package);
             package.SYN = 1;
-            package.seq_num = rand() % 10000 + 1;
-            package.ack_num = client_isn + 1;
+            package.seq_num = SEQ;
+            package.ack_num = ACK;
             strncpy(package.data, SERVERPORT, sizeof(package.data));
             sendto(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, their_addr_len);
             // 3 way handshake finish
@@ -239,76 +242,40 @@ int main(void)
                     {
                         printf("File %s didn't exist.\n", tmp);
                         strcpy(sent_package.data, "File didn't exist.");
-                        sent_package.ack_num = rand() % 10000 + 1;
-                        sent_package.seq_num = 1;
+                        sent_package.ack_num = ++ACK;
+                        sent_package.seq_num = ++SEQ;
                         sent_package.FIN = 1;
                         sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                     }
 
-                    // char sent_byte;
-                    // int byte_count = 1, packet_count = 1, turn = 0;
-                    // unsigned short seq_num = 1;
-                    // while (file.get(sent_byte))
-                    // {
-                    //     sent_package.data[byte_count - 1] = sent_byte;
-
-                    //     if (byte_count == 1024)
-                    //     {
-                    //         sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                    //         reset(&sent_package);
-                    //         usleep(5);
-                    //         if ((int)pow(2, turn) == packet_count)
-                    //         {
-                    //             printf("package turn %d\n", (int)pow(2, turn));
-                    //             for (int i = 0; i < pow(2, turn); i++)
-                    //             {
-                    //                 recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                    //                 cout << (int)pow(2, turn)-1 << " i = " << i << endl;
-                    //             }
-
-                    //             byte_count = 1;
-                    //             packet_count = 1;
-                    //             turn++;
-                    //             continue;
-                    //         }
-                    //         else
-                    //         {
-                    //             byte_count = 1;
-                    //             packet_count++;
-                    //             continue;
-                    //         }
-                    //     }
-                    //     byte_count++;
-                    // }
-                    // sent_package.data_size = byte_count - 1;
-                    // sent_package.FIN = 1;
-                    // sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-
                     char sent_byte;
-                    int count = 1, tmp_count = 1, seq = 1;
+                    int count = 1, tmp_count = 1;
                     while (file.get(sent_byte))
                     {
                         sent_package.data[count - 1] = sent_byte;
 
                         if (count == 1024)
                         {
-                            sent_package.seq_num = seq++;
-                            sent_package.ack_num = seq;
+                            sent_package.seq_num = ++SEQ;
+                            sent_package.ack_num = ++ACK;
+                            resent:
                             sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                             char s[INET6_ADDRSTRLEN];
                             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
                             printf("Seht a package to %s : \n", s);
-                            reset(&sent_package);
 
                             recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
                             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
+                            if(received_package.ack_num == SEQ )
+                                goto resent;
                             count = 1;
+                            reset(&sent_package);
                             continue;
                         }
                         count++;
                     }
-                    sent_package.seq_num = seq++;
-                    sent_package.ack_num = seq;
+                    sent_package.seq_num = ++SEQ;
+                    sent_package.ack_num = ++ACK;
                     sent_package.data_size = count - 1;
                     sent_package.FIN = 1;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
@@ -325,8 +292,8 @@ int main(void)
                     char ipstr[INET6_ADDRSTRLEN];
                     strcpy(sent_package.data, DNS(pch, ipstr));
                     //cout << "sent: " << sent_package.data << endl;
-                    sent_package.ack_num = rand() % 10000 + 1;
-                    sent_package.seq_num = 1;
+                    sent_package.seq_num = ++SEQ;
+                    sent_package.ack_num = ++ACK;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                     char s[INET6_ADDRSTRLEN];
                     inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
@@ -362,8 +329,8 @@ int main(void)
                         continue;
                     }
 
-                    sent_package.ack_num = rand() % 10000 + 1;
-                    sent_package.seq_num = 1;
+                    sent_package.seq_num = ++SEQ;
+                    sent_package.ack_num = ++ACK;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                     char s[INET6_ADDRSTRLEN];
                     inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
@@ -373,7 +340,7 @@ int main(void)
                     printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                 }
             }
-
+            printf("\033[32mClient %d transmit successful.\033[m\n",getpid());
             exit(0);
         }
     }

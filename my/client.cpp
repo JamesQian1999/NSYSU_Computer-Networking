@@ -23,6 +23,7 @@ public:
     unsigned short source_port = 0;
     unsigned int seq_num = 0;
     unsigned int ack_num = 0;
+    unsigned int check_sum = 0;
     unsigned short data_size = 1024;
     bool ACK = 0;
     bool SYN = 0;
@@ -37,6 +38,7 @@ void reset(Package *p)
     p->source_port = 0;
     p->seq_num = 0;
     p->ack_num = 0;
+    p->check_sum = 0;
     p->data_size = 1024;
     p->ACK = 0;
     p->SYN = 0;
@@ -47,8 +49,9 @@ void reset(Package *p)
 
 int main(int argc, char *argv[])
 {
+    srand(time(NULL));
     char SERVERPORT[5] = "4950", SERVERPORT_[5] = "4950"; // server port
-    int sockfd, rv, numbytes;
+    int sockfd, rv, numbytes, SEQ = rand() % 10000 + 1, ACK;
     struct addrinfo hints, *servinfo;
     struct sockaddr_storage their_addr;
     socklen_t their_addr_len;
@@ -81,7 +84,7 @@ int main(int argc, char *argv[])
     printf("Sent package(SYN) to %s : %s\n", argv[1], SERVERPORT);
     Package handshake, package;
     handshake.SYN = 1;
-    handshake.seq_num = rand() % 10000 + 1;
+    handshake.seq_num = SEQ;
     if ((numbytes = sendto(sockfd, (char *)&handshake, sizeof(handshake), 0, servinfo->ai_addr, servinfo->ai_addrlen)) == -1)
     {
         printf("3-Way-Handshake ERROR\n");
@@ -93,6 +96,7 @@ int main(int argc, char *argv[])
         numbytes = recvfrom(sockfd, (char *)&handshake, sizeof(handshake), 0, (struct sockaddr *)&their_addr, &their_addr_len);
         printf("Receive package(SYN/ACK) from %s : %s\n", argv[1], SERVERPORT);
         printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", handshake.seq_num, handshake.ack_num);
+        ACK = ++handshake.seq_num;
 
         strncpy(SERVERPORT, handshake.data, sizeof(SERVERPORT) - 1);
         getaddrinfo(argv[1], SERVERPORT, &hints, &servinfo);
@@ -109,6 +113,8 @@ int main(int argc, char *argv[])
             strcat(package.data, argv[i]);
         }
 
+        package.seq_num = ++SEQ;
+        package.ack_num = ACK;
         sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         reset(&package);
 
@@ -127,7 +133,7 @@ int main(int argc, char *argv[])
         //cout << "flag = " << flag << ",  option = " << option << endl;
         if (flag[1] == 'f') // e.g. -f 1.mp4
         {
-            printf("\032[30mReceiving %s form %s : %s\033[m\n", option, argv[1], SERVERPORT_);
+            printf("\033[32mReceiving %s form %s : %s\033[m\n", option, argv[1], SERVERPORT_);
             char file_name[20] = {0};
             strcpy(file_name, "received_");
             strcat(file_name, option);
@@ -139,16 +145,23 @@ int main(int argc, char *argv[])
             while (!FIN)
             {
                 recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                ACK = package.seq_num;
+                if (package.check_sum)
+                {
+                    reset(&package);
+                    package.seq_num = ++SEQ;
+                    package.ack_num = ACK;
+                    sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+                    continue;
+                }
                 FIN = package.FIN;
                 printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
                 for (int i = 0; i < package.data_size; i++)
                     file << package.data[i];
 
-                unsigned short seq = package.seq_num, ack = package.seq_num + 1;
                 reset(&package);
-
-                package.seq_num = seq;
-                package.ack_num = ack;
+                package.seq_num = ++SEQ;
+                package.ack_num = ++ACK;
                 sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
             }
             printf("\tFinish receiving.\n");
@@ -161,8 +174,10 @@ int main(int argc, char *argv[])
             printf("\033[32mReceive a DNS result from %s : %s\033[m\n", s, SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
             printf("\treceived: %s\n", package.data);
+            ACK = package.seq_num;
             reset(&package);
-            package.ack_num = 1;
+            package.seq_num = ++SEQ;
+            package.ack_num = ++ACK;
             sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
         else if (
@@ -179,8 +194,10 @@ int main(int argc, char *argv[])
             printf("\033[32mReceive a calculation result from %s : %s\033[m\n", s, SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
             printf("\treceived: %s\n", package.data);
+            ACK = package.seq_num;
             reset(&package);
-            package.ack_num = 1;
+            package.seq_num = ++SEQ;
+            package.ack_num = ++ACK;
             sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
         else // error

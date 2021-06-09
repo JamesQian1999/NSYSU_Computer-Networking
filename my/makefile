@@ -1,14 +1,20 @@
 
 all: client.cpp server.cpp
-	g++ client.cpp -o client
-	g++ server.cpp -o server
+	g++ client.cpp -o client -std=c++11 -pthread
+	g++ server.cpp -o server -std=c++11 -pthread
 
 client: client.cpp
-	g++ client.cpp -o client
+	g++ client.cpp -o client -std=c++11 -pthread
 
 server: server.cpp
-	g++ server.cpp -o server
+	g++ server.cpp -o server -std=c++11 -pthread
+
+run_server: server
+	./server
+	
+run_client: client
+	./client
 
 clean:
-	rm client server received_* &> /dev/null
+	rm client server received_*
 
