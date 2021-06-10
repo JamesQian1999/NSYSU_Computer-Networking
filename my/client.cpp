@@ -15,7 +15,7 @@
 using namespace std;
 
 #define MAXBUFLEN 100
-#define LOSS 5
+#define LOSS 10e-6
 
 class Package
 {
@@ -146,11 +146,6 @@ int main(int argc, char *argv[])
             while (!FIN)
             {
                 recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                if (package.ack_num == SEQ)
-                {
-                    package.check_sum = 0;
-                    goto resent;
-                }
                 ACK = package.seq_num;
 
                 if (package.check_sum) // handle loss
@@ -164,16 +159,13 @@ int main(int argc, char *argv[])
                 }
                 FIN = package.FIN;
 
-                printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
+                //printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
                 for (int i = 0; i < package.data_size; i++)
                     file << package.data[i];
 
                 reset(&package);
                 package.seq_num = ++SEQ;
                 package.ack_num = ++ACK;
-                if (rand() % LOSS == 0)
-                    package.check_sum = 1;
-                resent:
                 sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
             }
             printf("\tFinish receiving.\n");
@@ -182,10 +174,9 @@ int main(int argc, char *argv[])
         else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
         {
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-            printf("\033[32mReceive a DNS result from %s : %s\033[m\n", s, SERVERPORT_);
+            printf("\033[32mReceive a DNS result from %s : %s\033[m\n", argv[1], SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\treceived: %s\n", package.data);
+            printf("\tThe DNS result of \"%s\": %s\n",option, package.data);
             ACK = package.seq_num;
             reset(&package);
             package.seq_num = ++SEQ;
@@ -202,10 +193,9 @@ int main(int argc, char *argv[])
         )
         {
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-            printf("\033[32mReceive a calculation result from %s : %s\033[m\n", s, SERVERPORT_);
+            printf("\033[32mReceive a calculation result from %s : %s\033[m\n", argv[1], SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\treceived: %s\n", package.data);
+            printf("\tCalculation result: %s = %s\n",option, package.data);
             ACK = package.seq_num;
             reset(&package);
             package.seq_num = ++SEQ;

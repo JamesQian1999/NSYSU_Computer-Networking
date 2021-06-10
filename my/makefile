@@ -11,9 +11,6 @@ server: server.cpp
 
 run_server: server
 	./server
-	
-run_client: client
-	./client
 
 clean:
 	rm client server received_*
