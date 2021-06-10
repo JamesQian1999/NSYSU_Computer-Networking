@@ -148,8 +148,9 @@ int main(int argc, char *argv[])
                 ACK = package.seq_num;
                 if (package.check_sum)
                 {
+                    printf("\033[31m\tPackage loss ( seq_num = %u, ack_num = %u )\n\033[m", package.seq_num, package.ack_num);
                     reset(&package);
-                    package.seq_num = ++SEQ;
+                    package.seq_num = SEQ;
                     package.ack_num = ACK;
                     sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
                     continue;

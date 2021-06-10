@@ -258,6 +258,7 @@ int main(void)
                         {
                             sent_package.seq_num = ++SEQ;
                             sent_package.ack_num = ++ACK;
+                            if(rand()% 1000000 == 0 ) sent_package.check_sum = 1;
                             resent:
                             sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                             char s[INET6_ADDRSTRLEN];
