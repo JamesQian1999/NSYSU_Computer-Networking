@@ -268,7 +268,7 @@ int main(void)
                             sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                             char s[INET6_ADDRSTRLEN];
                             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                            printf("Sent a package to %s : \n", s);
+                            printf("Sent a package to %s ( seq_num = %u, ack_num = %u ): \n", s,sent_package.seq_num,sent_package.ack_num);
 
                             recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
                             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
