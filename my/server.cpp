@@ -253,7 +253,7 @@ int main(void)
                     }
 
                     char sent_byte;
-                    int count = 1, tmp_count = 1;
+                    int count = 1, tmp_count = 1, odd = 0;
                     while (file.get(sent_byte))
                     {
                         sent_package.data[count - 1] = sent_byte;
@@ -268,15 +268,20 @@ int main(void)
                             sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                             char s[INET6_ADDRSTRLEN];
                             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                            printf("Sent a package to %s ( seq_num = %u, ack_num = %u ): \n", s,sent_package.seq_num,sent_package.ack_num);
+                            printf("Sent a package to %s ( seq_num = %u, ack_num = %u ) \n", s, sent_package.seq_num, sent_package.ack_num);
 
                             recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                            printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
+                            if (odd % 2 || received_package.ack_num == SEQ)
+                                printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
+
                             if (received_package.ack_num == SEQ)
                             {
+                                odd--;
+                                printf("\033[31m\tResent a package ( seq_num = %u, ack_num = %u )\033[m\n", received_package.seq_num, received_package.ack_num);
                                 sent_package.check_sum = 0;
                                 goto resent;
                             }
+                            odd++;
                             count = 1;
                             reset(&sent_package);
                             continue;
