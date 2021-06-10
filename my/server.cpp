@@ -20,6 +20,7 @@ lsof -i :12000
 kill -9 19422
 */
 #define MAXBUFLEN 100
+#define LOSS 5
 
 class Package
 {
@@ -258,8 +259,9 @@ int main(void)
                         {
                             sent_package.seq_num = ++SEQ;
                             sent_package.ack_num = ++ACK;
-                            if(rand()% 1000000 == 0 ) sent_package.check_sum = 1;
-                            resent:
+                            if (rand() % LOSS == 0)
+                                sent_package.check_sum = 1;
+                        resent:
                             sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                             char s[INET6_ADDRSTRLEN];
                             inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
@@ -267,8 +269,11 @@ int main(void)
 
                             recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
                             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
-                            if(received_package.ack_num == SEQ )
+                            if (received_package.ack_num == SEQ)
+                            {
+                                sent_package.check_sum = 0;
                                 goto resent;
+                            }
                             count = 1;
                             reset(&sent_package);
                             continue;
@@ -341,7 +346,7 @@ int main(void)
                     printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                 }
             }
-            printf("\033[32mClient %d transmit successful.\033[m\n",getpid());
+            printf("\033[32mClient %d transmit successful.\033[m\n", getpid());
             exit(0);
         }
     }

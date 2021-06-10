@@ -15,6 +15,7 @@
 using namespace std;
 
 #define MAXBUFLEN 100
+#define LOSS 5
 
 class Package
 {
@@ -145,8 +146,14 @@ int main(int argc, char *argv[])
             while (!FIN)
             {
                 recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                if (package.ack_num == SEQ)
+                {
+                    package.check_sum = 0;
+                    goto resent;
+                }
                 ACK = package.seq_num;
-                if (package.check_sum)
+
+                if (package.check_sum) // handle loss
                 {
                     printf("\033[31m\tPackage loss ( seq_num = %u, ack_num = %u )\n\033[m", package.seq_num, package.ack_num);
                     reset(&package);
@@ -156,6 +163,7 @@ int main(int argc, char *argv[])
                     continue;
                 }
                 FIN = package.FIN;
+
                 printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
                 for (int i = 0; i < package.data_size; i++)
                     file << package.data[i];
@@ -163,6 +171,9 @@ int main(int argc, char *argv[])
                 reset(&package);
                 package.seq_num = ++SEQ;
                 package.ack_num = ++ACK;
+                if (rand() % LOSS == 0)
+                    package.check_sum = 1;
+                resent:
                 sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
             }
             printf("\tFinish receiving.\n");
