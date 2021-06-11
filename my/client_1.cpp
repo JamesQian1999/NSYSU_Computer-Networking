@@ -1,9 +1,7 @@
+#include <unistd.h>
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <thread>
-#include <mutex>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -28,7 +26,6 @@ public:
     unsigned int ack_num = 0;
     unsigned int check_sum = 0;
     unsigned short data_size = 1024;
-    bool END = 0;
     bool ACK = 0;
     bool SYN = 0;
     bool FIN = 0;
@@ -44,7 +41,6 @@ void reset(Package *p)
     p->ack_num = 0;
     p->check_sum = 0;
     p->data_size = 1024;
-    p->END = 0;
     p->ACK = 0;
     p->SYN = 0;
     p->FIN = 0;
@@ -60,7 +56,6 @@ int main(int argc, char *argv[])
     struct addrinfo hints, *servinfo;
     struct sockaddr_storage their_addr;
     socklen_t their_addr_len;
-    
 
     if (argc < 2 || argc % 2) //172.20.10.7 -f 1.mp4 -DNS www.google.com
     {
@@ -214,9 +209,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    Package end;
-    end.END = 1;
-    sendto(sockfd, (char *)&end, sizeof(end), 0, servinfo->ai_addr, servinfo->ai_addrlen);
     close(sockfd);
     return 0;
 }
