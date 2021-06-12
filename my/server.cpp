@@ -9,21 +9,20 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <fcntl.h>
 using namespace std;
 /*
 lsof -i :12000
 kill -9 19422
 */
-#define MAXBUFLEN 512
-#define LOSS 10e-6
 
 class Package
 {
@@ -42,6 +41,13 @@ public:
     char data[1024];
 };
 
+#define MAXBUFLEN 512
+#define LOSS 10e-6
+#define EMPTY 0
+#define RCV 1
+#define SENT 2
+#define ACKed 3
+
 void caculate(Package *sent_package, const char *pch, char op);
 char *DNS(const char *url, char *ipstr);
 void reset(Package *p);
@@ -50,7 +56,7 @@ mutex myMutex;
 
 //received buffer
 int rcv_front = 0, rcv_tail = -1;
-bool rcv_buff_check[MAXBUFLEN] = {0};
+int rcv_buff_check[MAXBUFLEN] = {0};
 Package rcv_buff[MAXBUFLEN];
 
 //sent buffer
@@ -170,70 +176,9 @@ int main(void)
                 //cout << "fag = " << flag << endl;
                 if (flag[1] == 'f') // e.g. -f 1.mp4
                 {
-                    int eof = 0, file_ptr = 1;
                     char tmp[100] = {0};
                     pch = strtok(NULL, " ");
                     sprintf(tmp, "%s", pch);
-                    fstream file;
-                    file.open(tmp, ios::in | ios::binary);
-
-                    if (file.fail()) // File didn't exist.
-                    {
-                        printf("File %s didn't exist.\n", tmp);
-                        strcpy(sent_package.data, "File didn't exist.");
-                        sent_package.ack_num = ++ACK;
-                        sent_package.seq_num = ++SEQ;
-                        sent_package.FIN = 1;
-                        sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                    }
-
-                    char sent_byte;
-                    int count = 1, tmp_count = 1, odd = 0;
-                    while (file.get(sent_byte))
-                    {
-                        sent_package.data[count - 1] = sent_byte;
-
-                        if (count == 1024)
-                        {
-                            sent_package.seq_num = ++SEQ;
-                            sent_package.ack_num = ++ACK;
-                            if (distribution(generator))
-                                sent_package.check_sum = 1;
-                        resent:
-                            sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                            char s[INET6_ADDRSTRLEN];
-                            inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                            printf("Sent a package to %s ( seq_num = %u, ack_num = %u ) \n", s, sent_package.seq_num, sent_package.ack_num);
-
-                            recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                            if (odd % 2 || received_package.ack_num == SEQ)
-                                printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
-
-                            if (received_package.ack_num == SEQ)
-                            {
-                                odd--;
-                                printf("\033[31m\tResent a package ( seq_num = %u, ack_num = %u )\033[m\n", received_package.seq_num, received_package.ack_num);
-                                sent_package.check_sum = 0;
-                                goto resent;
-                            }
-                            odd++;
-                            count = 1;
-                            reset(&sent_package);
-                            continue;
-                        }
-                        count++;
-                    }
-                    sent_package.seq_num = ++SEQ;
-                    sent_package.ack_num = ++ACK;
-                    sent_package.data_size = count - 1;
-                    sent_package.FIN = 1;
-                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                    char s[INET6_ADDRSTRLEN];
-                    inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                    printf("Sent a package to %s : \n", s);
-
-                    recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                    printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                 }
                 else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
                 {
@@ -249,6 +194,7 @@ int main(void)
                     printf("Sent a package to %s : \n", s);
 
                     //recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                    while (rcv_buff_check[rcv_front] == EMPTY);
                     myMutex.lock();
                     printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
                     rcv_front = (rcv_front + 1) % MAXBUFLEN;
@@ -280,20 +226,12 @@ int main(void)
                         printf("Invaild flag.\n");
                         continue;
                     }
-
-                    sent_package.seq_num = ++SEQ;
-                    sent_package.ack_num = ++ACK;
-                    sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                    char s[INET6_ADDRSTRLEN];
-                    inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                    printf("Sent a package to %s : \n", s);
-
-                    recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                    printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
                 }
             }
+
             receiving.join();
             printf("\033[32mClient %d transmit successful.\033[m\n", getpid());
+            close(sockfd);
             exit(0);
         }
     }
@@ -307,9 +245,10 @@ void receiving_pkg()
     {
         Package received_package;
         recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-        printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
+        //printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
         myMutex.lock();
         rcv_tail = (rcv_tail + 1) % 512;
+        rcv_buff_check[rcv_tail] = RCV;
         rcv_buff[rcv_tail].destination_port = received_package.destination_port;
         rcv_buff[rcv_tail].source_port = received_package.source_port;
         rcv_buff[rcv_tail].seq_num = received_package.seq_num;
@@ -323,9 +262,12 @@ void receiving_pkg()
         rcv_buff[rcv_tail].window_size = received_package.window_size;
         strcpy(rcv_buff[rcv_tail].data, received_package.data);
         myMutex.unlock();
-        if(received_package.END)
+        if (received_package.END)
         {
-            printf("end!\n");
+            Package end;
+            end.END = 1;
+            sendto(sockfd, (char *)&end, sizeof(end), 0, (struct sockaddr *)&their_addr, their_addr_len);
+            //printf("end!\n");
             break;
         }
     }
