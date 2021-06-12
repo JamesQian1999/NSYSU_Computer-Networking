@@ -3,6 +3,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <queue>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +27,7 @@ public:
     unsigned int seq_num = 0;
     unsigned int ack_num = 0;
     unsigned int check_sum = 0;
-    unsigned short data_size = 1024;
+    int data_size = 1024;
     bool END = 0;
     bool ACK = 0;
     bool SYN = 0;
@@ -65,7 +66,7 @@ void receiving_pkg();
 mutex myMutex;
 
 //received buffer
-int rcv_front = 0, rcv_tail = -1;
+int rcv_front = 0, rcv_tail = 0;
 int rcv_buff_check[MAXBUFLEN] = {0};
 Package rcv_buff[MAXBUFLEN];
 
@@ -76,9 +77,9 @@ int sockfd;
 
 int main(int argc, char *argv[])
 {
-    srand(time(NULL));
+    srand(3 * time(NULL));
     char SERVERPORT[5] = "4950", SERVERPORT_[5] = "4950"; // server port
-    int rv, numbytes, SEQ = rand() % 10000 + 1, ACK;
+    int rv, numbytes, SEQ = 1, ACK;      //rand() % 10000 + 1
     struct addrinfo hints, *servinfo;
 
     if (argc < 2 || argc % 2) //172.20.10.7 -f 1.mp4 -DNS www.google.com
@@ -150,7 +151,8 @@ int main(int argc, char *argv[])
     }
     //3-way handshake END
 
-    thread receiving(receiving_pkg);
+    thread receiving(receiving_pkg); //handle receiving
+
     for (int i = 1; i <= (argc - 2) / 2; i++)
     {
         char flag[5] = {0}, option[500] = {0}, s[INET6_ADDRSTRLEN];
@@ -160,52 +162,46 @@ int main(int argc, char *argv[])
         //cout << "flag = " << flag << ",  option = " << option << endl;
         if (flag[1] == 'f') // e.g. -f 1.mp4
         {
-            // printf("\033[32mReceiving %s form %s : %s\033[m\n", option, argv[1], SERVERPORT_);
-            // char file_name[20] = {0};
-            // strcpy(file_name, "received_");
-            // strcat(file_name, option);
+            printf("\033[32mReceiving %s form %s : %s\033[m\n", option, argv[1], SERVERPORT_);
+            char file_name[20] = {0};
+            strcpy(file_name, "received_");
+            strcat(file_name, option);
+            int fd = open(file_name, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
+            while (1)
+            {
+                while (rcv_buff_check[rcv_front] == EMPTY)
+                    ;
+                myMutex.lock();
+                printf("\033[32mReceive a package from %s : %s\033[m\n", argv[1], SERVERPORT_);
+                printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
+                ACK = rcv_buff[rcv_front].seq_num;
 
-            // fstream file;
-            // file.open(file_name, ios::out | ios::binary);
-            // int FIN = 0;
+                write(fd, rcv_buff[rcv_front].data, rcv_buff[rcv_front].data_size);
 
-            // while (!FIN)
-            // {
-            //     recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            //     ACK = package.seq_num;
+                int finish = rcv_buff[rcv_front].data_size;
+                rcv_buff_check[rcv_front] = EMPTY;
+                rcv_front = (rcv_front + 1) % MAXBUFLEN;
+                myMutex.unlock();
 
-            //     if (package.check_sum) // handle loss
-            //     {
-            //         printf("\033[31m\tPackage loss ( seq_num = %u, ack_num = %u )\n\033[m", package.seq_num, package.ack_num);
-            //         reset(&package);
-            //         package.seq_num = SEQ;
-            //         package.ack_num = ACK;
-            //         sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
-            //         continue;
-            //     }
-            //     FIN = package.FIN;
-
-            //     //printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            //     for (int i = 0; i < package.data_size; i++)
-            //         file << package.data[i];
-
-            //     reset(&package);
-            //     package.seq_num = ++SEQ;
-            //     package.ack_num = ++ACK;
-            //     sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
-            // }
-            // printf("\tFinish receiving.\n");
-            // file.close();
+                sent_package.seq_num = ++SEQ;
+                sent_package.ack_num = ++ACK;
+                sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+                if (finish < 1024)
+                    break;
+                printf("here\n");
+            }
+            printf("here out\n");
         }
         else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
         {
-            printf("\033[32mReceive a DNS result from %s : %s\033[m\n", argv[1], SERVERPORT_);
             while (rcv_buff_check[rcv_front] == EMPTY)
                 ;
             myMutex.lock();
+            printf("\033[32mReceive a DNS result from %s : %s\033[m\n", argv[1], SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
             printf("\tThe DNS result of \"%s\": %s\n", option, rcv_buff[rcv_front].data);
             ACK = rcv_buff[rcv_front].seq_num;
+            rcv_buff_check[rcv_front] = EMPTY;
             rcv_front = (rcv_front + 1) % MAXBUFLEN;
             myMutex.unlock();
             sent_package.seq_num = ++SEQ;
@@ -221,15 +217,19 @@ int main(int argc, char *argv[])
             || (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // e.g. -sqrt 2
         )
         {
-            // recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-            // printf("\033[32mReceive a calculation result from %s : %s\033[m\n", argv[1], SERVERPORT_);
-            // printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            // printf("\tCalculation result: %s = %s\n", option, package.data);
-            // ACK = package.seq_num;
-            // reset(&package);
-            // package.seq_num = ++SEQ;
-            // package.ack_num = ++ACK;
-            // sendto(sockfd, (char *)&package, sizeof(package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+            while (rcv_buff_check[rcv_front] == EMPTY)
+                ;
+            myMutex.lock();
+            printf("\033[32mReceive a calculation result from %s : %s\033[m\n", argv[1], SERVERPORT_);
+            printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
+            printf("\tCalculation result: %s = %s\n", option, rcv_buff[rcv_front].data);
+            ACK = rcv_buff[rcv_front].seq_num;
+            rcv_buff_check[rcv_front] = EMPTY;
+            rcv_front = (rcv_front + 1) % MAXBUFLEN;
+            myMutex.unlock();
+            sent_package.seq_num = ++SEQ;
+            sent_package.ack_num = ++ACK;
+            sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
         }
         else // error
         {
@@ -253,8 +253,13 @@ void receiving_pkg()
         Package received_package;
         recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
         //printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
+        if (received_package.END)
+        {
+            //printf("end!\n");
+            close(sockfd);
+            break;
+        }
         myMutex.lock();
-        rcv_tail = (rcv_tail + 1) % 512;
         rcv_buff_check[rcv_tail] = RCV;
         rcv_buff[rcv_tail].destination_port = received_package.destination_port;
         rcv_buff[rcv_tail].source_port = received_package.source_port;
@@ -267,13 +272,10 @@ void receiving_pkg()
         rcv_buff[rcv_tail].SYN = received_package.SYN;
         rcv_buff[rcv_tail].FIN = received_package.FIN;
         rcv_buff[rcv_tail].window_size = received_package.window_size;
-        strcpy(rcv_buff[rcv_tail].data, received_package.data);
+        for (int i = 0; i < 1024; i++)
+            rcv_buff[rcv_tail].data[i] = received_package.data[i];
+        //strcpy(rcv_buff[rcv_tail].data, received_package.data);
+        rcv_tail = (rcv_tail + 1) % MAXBUFLEN;
         myMutex.unlock();
-        if (received_package.END)
-        {
-            //printf("end!\n");
-            close(sockfd);
-            break;
-        }
     }
 }
