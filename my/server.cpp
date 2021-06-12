@@ -187,14 +187,15 @@ int main(void)
                     strcpy(sent_package.data, DNS(pch, ipstr));
                     //cout << "sent: " << sent_package.data << endl;
                     sent_package.seq_num = ++SEQ;
-                    sent_package.ack_num = ++ACK;
+                    sent_package.ack_num = rcv_buff[rcv_front].seq_num + 1;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                     char s[INET6_ADDRSTRLEN];
                     inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
                     printf("Sent a package to %s : \n", s);
 
                     //recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                    while (rcv_buff_check[rcv_front] == EMPTY);
+                    while (rcv_buff_check[rcv_front] == EMPTY)
+                        ;
                     myMutex.lock();
                     printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
                     rcv_front = (rcv_front + 1) % MAXBUFLEN;
