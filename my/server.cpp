@@ -52,6 +52,7 @@ public:
 void caculate(Package *sent_package, const char *pch, char op);
 char *DNS(const char *url, char *ipstr);
 void reset(Package *p);
+void reset_buff(int num);
 void receiving_pkg();
 mutex myMutex;
 
@@ -62,7 +63,7 @@ Package rcv_buff[MAXBUFLEN];
 
 //sent buffer
 int sent_front[2] = {0, -1}, sent_tail = 0;
-bool sent_buff_check[MAXBUFLEN] = {0};
+int sent_buff_check[MAXBUFLEN] = {0};
 Package sent_buff[MAXBUFLEN];
 
 int sockfd;
@@ -103,7 +104,7 @@ int main(void)
     }
     freeaddrinfo(servinfo);
 
-    printf("\033[33mServer is ready......\033[m\n");
+    printf("\033[33mServer is ready......\033[m\n\n");
     their_addr_len = sizeof their_addr;
 
     while (1)
@@ -128,9 +129,10 @@ int main(void)
             //printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof s));
             default_random_engine generator;
             bernoulli_distribution distribution(LOSS);
+            printf("\033[33m=====Three-way handshake(Client %d)======\033[m\n", getpid());
             printf("\tReceive a package (SYN)\n");
             srand(time(NULL));
-            int SEQ = 1, ACK; //rand() % 10000 + 1
+            int SEQ = rand() % 10000 + 1, ACK, ssthresh = 64, MSS = 1, wnd = 1; //rand() % 10000 + 1
             ACK = ++package.seq_num;
             reset(&package);
             package.SYN = 1;
@@ -170,74 +172,115 @@ int main(void)
             char *pch = strtok(package.data, " ");
             for (int i = 1; i <= num; i++)
             {
-                Package sent_package, received_package;
+                Package sent_package;
                 char *flag, *option;
                 pch = strtok(NULL, " ");
                 flag = pch;
                 //cout << "fag = " << flag << endl;
                 if (flag[1] == 'f') // e.g. -f 1.mp4
                 {
+
                     char file_name[100] = {0};
                     pch = strtok(NULL, " ");
                     sprintf(file_name, "%s", pch);
                     int fd = open(file_name, O_RDONLY);
+                    wnd = 1;
+                    printf("\033[32mSending %s\n\033[m", file_name);
                     while (1)
                     {
-                        printf("sent_front = %d, sent_tail = %d\n", sent_front[0], sent_tail);
-                        if (sent_front[0] == sent_tail)
+                        //printf("sent_front = %d, sent_tail = %d\n", sent_front[0], sent_tail);
+                        char tmp[1024];
+                        for (int i = 0; i < wnd; i++)
                         {
-                            char tmp[1024];
-                            for (int i = 0; i < MAXBUFLEN - 1; i++)
-                            {
 
-                                long int rv = read(fd, sent_buff[sent_tail].data, 1024);
-                                printf("No. %d, rv = %ld\n", sent_tail, rv);
-                                sent_buff[sent_tail].data_size = rv;
+                            long int rv = read(fd, sent_buff[sent_tail].data, 1024);
+                            //printf("No. %d, rv = %ld\n", sent_tail, rv);
+                            sent_buff[sent_tail].data_size = rv;
 
-                                sent_buff[sent_tail].destination_port = 0;
-                                sent_buff[sent_tail].source_port = 0;
-                                sent_buff[sent_tail].seq_num = ++SEQ;
-                                sent_buff[sent_tail].ack_num = 0;
-                                sent_buff[sent_tail].check_sum = 0;
-                                sent_buff[sent_tail].END = 0;
-                                sent_buff[sent_tail].ACK = 0;
-                                sent_buff[sent_tail].SYN = 0;
-                                sent_buff[sent_tail].FIN = 0;
-                                sent_buff[sent_tail].window_size = 0;
+                            sent_buff[sent_tail].destination_port = 0;
+                            sent_buff[sent_tail].source_port = 0;
+                            sent_buff[sent_tail].seq_num = ++SEQ;
+                            //printf("\033[33msent_buff[%d].seq_num = %d\n\033[m", sent_tail, sent_buff[sent_tail].seq_num);
+                            sent_buff[sent_tail].ack_num = 0;
+                            sent_buff[sent_tail].check_sum = 0;
+                            sent_buff[sent_tail].END = 0;
+                            sent_buff[sent_tail].ACK = 0;
+                            sent_buff[sent_tail].SYN = 0;
+                            sent_buff[sent_tail].FIN = 0;
+                            sent_buff[sent_tail].window_size = wnd;
 
-                                sent_buff_check[sent_tail] = RCV;
+                            sent_buff_check[sent_tail] = RCV;
+                            if (!i)
                                 sent_front[1] = SEQ;
 
-                                printf("sent_front = %d, sent_tail = %d, rv = %ld\n", sent_front[0], sent_tail, rv);
+                            //printf("sent_front = %d, sent_tail = %d, rv = %ld\n", sent_front[0], sent_tail, rv);
 
-                                if (rv < 1024)
-                                {
-                                    sent_buff[sent_tail].FIN = 1;
-                                    sent_tail = (sent_tail + 1) % MAXBUFLEN;
-                                    break;
-                                }
+                            if (rv < 1024)
+                            {
+                                //printf("last size = %d\n",sent_buff[sent_tail].data_size);
+                                sent_buff[sent_tail].FIN = 1;
                                 sent_tail = (sent_tail + 1) % MAXBUFLEN;
+                                break;
                             }
+                            sent_tail = (sent_tail + 1) % MAXBUFLEN;
                         }
-                        sendto(sockfd, (char *)&sent_buff[sent_front[0]], sizeof(sent_buff[sent_front[0]]), 0, (struct sockaddr *)&their_addr, their_addr_len);
-                        bool finish = sent_buff[sent_front[0]].FIN;
-                        printf("No. %d, FIN = %d\n", sent_front[0], sent_buff[sent_front[0]].FIN);
-                        sent_front[0] = (sent_front[0] + 1) % MAXBUFLEN;
+
+                        bool finish = 0;
+                        int ptr = sent_front[0],finish_detected;
                         char s[INET6_ADDRSTRLEN];
                         inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                        printf("Sent a package to %s : \n", s);
+                        printf("Sent %d package to %s\n", wnd, s);
+                        for (int i = 0; i < wnd; i++)
+                        {
+                            sent_buff[ptr].ack_num = ++ACK;
+                            //printf("\033[31msent_buff[%d].seq_num = %d\n\033[m", ptr, sent_buff[ptr].ack_num);
+                            finish = sent_buff[ptr].FIN;
+                            finish_detected = ptr;
+                            sendto(sockfd, (char *)&sent_buff[ptr], sizeof(sent_buff[ptr]), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                            //printf("No. %d, FIN = %d\n", ptr, sent_buff[ptr].FIN);
+                            //char s[INET6_ADDRSTRLEN];
+                            //inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
+                            //printf("Sent a package to %s : \n", s);
+                            if (finish)
+                                break;
+                            ptr = (ptr + 1) % MAXBUFLEN;
+                            usleep(3);
+                        }
 
-                        //recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-                        while (rcv_buff_check[rcv_front] == EMPTY)
-                            ;
-                        myMutex.lock();
-                        printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
-                        rcv_buff_check[rcv_front] = EMPTY;
-                        rcv_front = (rcv_front + 1) % MAXBUFLEN;
-                        myMutex.unlock();
-                        if (finish)
-                            break;
+                        for (int i = 0; i < wnd; i++)
+                        {
+                            //printf("sent_front[1] = %d\n", sent_front[1]);
+                            while (rcv_buff_check[rcv_front] == EMPTY)
+                                ;
+                            myMutex.lock();
+                            if (!i)
+                                printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
+                            rcv_buff_check[rcv_front] = EMPTY;
+                            //printf("rcv_buff[%d].ack_num = %d\n", rcv_front, rcv_buff[rcv_front].ack_num);
+                            //printf("here1\n");
+                            sent_buff_check[((rcv_buff[rcv_front].ack_num - 1) - sent_front[1]) % MAXBUFLEN] = ACKed;
+                            //printf("here2\n");
+                            rcv_front = (rcv_front + 1) % MAXBUFLEN;
+                            //printf("Before No. %d, FIN = %d\n", sent_front[0], sent_buff[sent_front[0]].FIN);
+                            int tmp = sent_front[0];
+                            //printf("A No. %d, FIN = %d\n", sent_front[0], sent_buff[sent_front[0]].FIN);
+                            sent_front[0] = (sent_front[0] + 1) % MAXBUFLEN;
+                            myMutex.unlock();
+                            if (finish_detected == tmp && sent_buff[finish_detected].FIN)
+                            {
+                                reset_buff(finish_detected);
+                                goto done;
+                            }
+                        }
+                        //printf("here1\n");
+                        if (wnd >= ssthresh)
+                            wnd = wnd + 1;
+                        else
+                            wnd = 2 * wnd;
                     }
+                done:;
+                    close(fd);
+                    //printf("done====================================================\n");
                 }
                 else if (flag[1] == 'D' && flag[2] == 'N' && flag[3] == 'S') // e.g. -DNS google.com
                 {
@@ -305,7 +348,7 @@ int main(void)
             }
             //printf("rcv_front = %d,  rcv_tail = %d\n", rcv_front, rcv_tail);
             receiving.join();
-            printf("\033[32mClient %d transmit successful.\033[m\n", getpid());
+            printf("\033[32mClient %d transmit successful.\033[m\n\n", getpid());
             close(sockfd);
             exit(0);
         }
@@ -344,10 +387,27 @@ void receiving_pkg()
         rcv_buff[rcv_tail].window_size = received_package.window_size;
         for (int i = 0; i < 1024; i++)
             rcv_buff[rcv_tail].data[i] = received_package.data[i];
-        //strcpy(rcv_buff[rcv_tail].data, received_package.data);
+
         rcv_tail = (rcv_tail + 1) % MAXBUFLEN;
         myMutex.unlock();
     }
+}
+
+void reset_buff(int num)
+{
+        sent_buff[num].destination_port = 0;
+        sent_buff[num].source_port = 0;
+        sent_buff[num].seq_num = 0;
+        sent_buff[num].ack_num = 0;
+        sent_buff[num].check_sum = 0;
+        sent_buff[num].data_size = 0;
+        sent_buff[num].END = 0;
+        sent_buff[num].ACK = 0;
+        sent_buff[num].SYN = 0;
+        sent_buff[num].FIN = 0;
+        sent_buff[num].window_size = 0;
+        for (int i = 0; i < 1024; i++)
+            sent_buff[num].data[i] = 0;
 }
 
 void reset(Package *p)
