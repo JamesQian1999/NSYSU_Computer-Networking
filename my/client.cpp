@@ -36,22 +36,6 @@ public:
     char data[1024];
 };
 
-void reset(Package *p)
-{
-    p->destination_port = 0;
-    p->source_port = 0;
-    p->seq_num = 0;
-    p->ack_num = 0;
-    p->check_sum = 0;
-    p->data_size = 1024;
-    p->END = 0;
-    p->ACK = 0;
-    p->SYN = 0;
-    p->FIN = 0;
-    p->window_size = 0;
-    memset(&p->data, 0, sizeof(p->data));
-}
-
 #define MAXBUFLEN 512
 #define LOSS 10e-6
 #define EMPTY 0
@@ -61,6 +45,7 @@ void reset(Package *p)
 
 //handle packet
 void receiving_pkg();
+void reset(Package *p);
 
 // mutex lock
 mutex myMutex;
@@ -161,8 +146,11 @@ int main(int argc, char *argv[])
         if (flag[1] == 'f') // e.g. -f 1.mp4
         {
             printf("\033[32mReceiving %s form %s : %s\033[m\n", option, argv[1], SERVERPORT_);
-            char file_name[20] = {0};
-            strcpy(file_name, "received_");
+            char file_name[20] = {0}, tmp_pid[10] = {0};
+            sprintf(tmp_pid, "%d", getpid());
+            strcpy(file_name, "received(");
+            strcat(file_name, tmp_pid);
+            strcat(file_name, ")_");
             strcat(file_name, option);
             int fd = open(file_name, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
             int tmp = -1;
@@ -170,15 +158,23 @@ int main(int argc, char *argv[])
             {
                 while (rcv_buff_check[rcv_front] == EMPTY)
                     ;
-                myMutex.lock();
 
+                myMutex.lock();
+                if (rcv_buff[rcv_front].ACK)
+                    sent_package.ACK = 1;
                 if (tmp != rcv_buff[rcv_front].window_size)
                 {
                     printf("Receive %d package from %s : %s\n", rcv_buff[rcv_front].window_size, argv[1], SERVERPORT_);
                     printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
                 }
+                if (rcv_buff[rcv_front].FIN && !strcmp(rcv_buff[rcv_front].data, "File didn't exist."))
+                {
+                    printf("\tFile %s didn't exist.\n", option);
+                    rcv_buff_check[rcv_front] = EMPTY;
+                    rcv_front = (rcv_front + 1) % MAXBUFLEN;
+                    break;
+                }
                 tmp = rcv_buff[rcv_front].window_size;
-
                 ACK = rcv_buff[rcv_front].seq_num;
 
                 write(fd, rcv_buff[rcv_front].data, rcv_buff[rcv_front].data_size);
@@ -192,8 +188,10 @@ int main(int argc, char *argv[])
                 sent_package.ack_num = ++ACK;
                 //printf("\033[32mrsent_package.ack_num = %d\n\033[m", sent_package.ack_num);
                 sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, servinfo->ai_addr, servinfo->ai_addrlen);
+                reset(&sent_package);
                 if (finish < 1024)
                     break;
+                usleep(3);
             }
             close(fd);
         }
@@ -248,6 +246,7 @@ int main(int argc, char *argv[])
     end.END = 1;
     sendto(sockfd, (char *)&end, sizeof(end), 0, servinfo->ai_addr, servinfo->ai_addrlen);
     receiving.join();
+    printf("\033[32mTransmit successful.\033[m\n\n");
     return 0;
 }
 
@@ -282,4 +281,20 @@ void receiving_pkg()
         rcv_tail = (rcv_tail + 1) % MAXBUFLEN;
         myMutex.unlock();
     }
+}
+
+void reset(Package *p)
+{
+    p->destination_port = 0;
+    p->source_port = 0;
+    p->seq_num = 0;
+    p->ack_num = 0;
+    p->check_sum = 0;
+    p->data_size = 1024;
+    p->END = 0;
+    p->ACK = 0;
+    p->SYN = 0;
+    p->FIN = 0;
+    p->window_size = 0;
+    memset(&p->data, 0, sizeof(p->data));
 }

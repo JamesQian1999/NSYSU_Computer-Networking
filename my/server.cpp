@@ -48,6 +48,9 @@ public:
 #define RCV 1
 #define SENT 2
 #define ACKed 3
+#define slow_start 1
+#define congestion_avoidance 2
+#define fast_recovery 3
 
 void caculate(Package *sent_package, const char *pch, char op);
 char *DNS(const char *url, char *ipstr);
@@ -132,7 +135,7 @@ int main(void)
             printf("\033[33m=====Three-way handshake(Client %d)======\033[m\n", getpid());
             printf("\tReceive a package (SYN)\n");
             srand(time(NULL));
-            int SEQ = rand() % 10000 + 1, ACK, ssthresh = 64, MSS = 1, wnd = 1; //rand() % 10000 + 1
+            int SEQ = rand() % 10000 + 1, ACK, ssthresh = 8, MSS = 1, wnd = 1, state = slow_start; //rand() % 10000 + 1
             ACK = ++package.seq_num;
             reset(&package);
             package.SYN = 1;
@@ -184,11 +187,22 @@ int main(void)
                     pch = strtok(NULL, " ");
                     sprintf(file_name, "%s", pch);
                     int fd = open(file_name, O_RDONLY);
-                    wnd = 1;
+                    if (fd == -1)
+                    {
+                        printf("File %s didn't exist.\n", file_name);
+                        strcpy(sent_package.data, "File didn't exist.");
+                        sent_package.window_size = 1;
+                        sent_package.ack_num = ++ACK;
+                        sent_package.seq_num = ++SEQ;
+                        sent_package.FIN = 1;
+                        sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
+                        goto done;
+                    }
+                    //wnd = 1;
                     printf("\033[32mSending %s\n\033[m", file_name);
                     while (1)
                     {
-                        //printf("sent_front = %d, sent_tail = %d\n", sent_front[0], sent_tail);
+
                         char tmp[1024];
                         for (int i = 0; i < wnd; i++)
                         {
@@ -226,21 +240,23 @@ int main(void)
                         }
 
                         bool finish = 0;
-                        int ptr = sent_front[0],finish_detected;
+                        int ptr = sent_front[0], finish_detected;
                         char s[INET6_ADDRSTRLEN];
                         inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                        printf("Sent %d package to %s\n", wnd, s);
+                        printf("cwnd = %d, ssthresh = %d\n", wnd, ssthresh);
                         for (int i = 0; i < wnd; i++)
                         {
+                            printf("Sent a package at 1024 byte( seq_num = %u, ack_num = %u )\n", sent_buff[ptr].seq_num, sent_buff[ptr].ack_num);
                             sent_buff[ptr].ack_num = ++ACK;
                             //printf("\033[31msent_buff[%d].seq_num = %d\n\033[m", ptr, sent_buff[ptr].ack_num);
                             finish = sent_buff[ptr].FIN;
                             finish_detected = ptr;
+                            if ((wnd == 4 && i == wnd - 1) || (wnd == 8 && i == wnd - 1))
+                                sent_buff[ptr].ACK = 1;
                             sendto(sockfd, (char *)&sent_buff[ptr], sizeof(sent_buff[ptr]), 0, (struct sockaddr *)&their_addr, their_addr_len);
                             //printf("No. %d, FIN = %d\n", ptr, sent_buff[ptr].FIN);
                             //char s[INET6_ADDRSTRLEN];
                             //inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
-                            //printf("Sent a package to %s : \n", s);
                             if (finish)
                                 break;
                             ptr = (ptr + 1) % MAXBUFLEN;
@@ -252,9 +268,35 @@ int main(void)
                             //printf("sent_front[1] = %d\n", sent_front[1]);
                             while (rcv_buff_check[rcv_front] == EMPTY)
                                 ;
-                            myMutex.lock();
-                            if (!i)
+                            if (rcv_buff[rcv_front].ACK)
+                            {
+                                printf("Receive three duplicate ACKs\n");
+                                //show state
+                                switch (state)
+                                {
+                                case slow_start:
+                                    printf("\033[34m*****Fast recovery*****\n\033[m");
+                                    state = fast_recovery;
+                                    break;
+                                case congestion_avoidance:
+                                    printf("\033[34m*****Fast recovery*****\n\033[m");
+                                    state = fast_recovery;
+                                    break;
+                                case fast_recovery:
+                                    printf("\033[34m*****Congestion_avoidance*****\n\033[m");
+                                    state = congestion_avoidance;
+                                    break;
+                                }
+                            }
+                            else
+                            {
                                 printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
+                                if (state == fast_recovery)
+                                {
+                                    printf("\033[34m*****Slow start*****\n\033[m");
+                                    state = slow_start;
+                                }
+                            }
                             rcv_buff_check[rcv_front] = EMPTY;
                             //printf("rcv_buff[%d].ack_num = %d\n", rcv_front, rcv_buff[rcv_front].ack_num);
                             //printf("here1\n");
@@ -266,16 +308,22 @@ int main(void)
                             //printf("A No. %d, FIN = %d\n", sent_front[0], sent_buff[sent_front[0]].FIN);
                             sent_front[0] = (sent_front[0] + 1) % MAXBUFLEN;
                             myMutex.unlock();
+                            if (wnd >= ssthresh)
+                            {
+                                state = congestion_avoidance;
+                            }
+
                             if (finish_detected == tmp && sent_buff[finish_detected].FIN)
                             {
                                 reset_buff(finish_detected);
                                 goto done;
                             }
                         }
-                        //printf("here1\n");
-                        if (wnd >= ssthresh)
+                        if (state == congestion_avoidance)
+                        {
                             wnd = wnd + 1;
-                        else
+                        }
+                        else if (state == slow_start)
                             wnd = 2 * wnd;
                     }
                 done:;
@@ -395,19 +443,19 @@ void receiving_pkg()
 
 void reset_buff(int num)
 {
-        sent_buff[num].destination_port = 0;
-        sent_buff[num].source_port = 0;
-        sent_buff[num].seq_num = 0;
-        sent_buff[num].ack_num = 0;
-        sent_buff[num].check_sum = 0;
-        sent_buff[num].data_size = 0;
-        sent_buff[num].END = 0;
-        sent_buff[num].ACK = 0;
-        sent_buff[num].SYN = 0;
-        sent_buff[num].FIN = 0;
-        sent_buff[num].window_size = 0;
-        for (int i = 0; i < 1024; i++)
-            sent_buff[num].data[i] = 0;
+    sent_buff[num].destination_port = 0;
+    sent_buff[num].source_port = 0;
+    sent_buff[num].seq_num = 0;
+    sent_buff[num].ack_num = 0;
+    sent_buff[num].check_sum = 0;
+    sent_buff[num].data_size = 0;
+    sent_buff[num].END = 0;
+    sent_buff[num].ACK = 0;
+    sent_buff[num].SYN = 0;
+    sent_buff[num].FIN = 0;
+    sent_buff[num].window_size = 0;
+    for (int i = 0; i < 1024; i++)
+        sent_buff[num].data[i] = 0;
 }
 
 void reset(Package *p)

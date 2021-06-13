@@ -13,5 +13,5 @@ run_server: server
 	clear ; ./server
 
 clean:
-	rm client server received_*
+	rm client server received\(*\)*
 
