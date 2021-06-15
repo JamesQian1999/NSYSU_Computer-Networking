@@ -34,8 +34,8 @@ public:
     unsigned int ack_num = 0;
     unsigned int check_sum = 0;
     int data_size = 1024;
+    int ACK = 0;
     bool END = 0;
-    bool ACK = 0;
     bool SYN = 0;
     bool FIN = 0;
     unsigned short window_size = 0;
@@ -78,9 +78,9 @@ int main(void)
     char SERVERPORT[5] = "4950"; // receiving port
     int rv, numbytes;
     struct addrinfo hints, *servinfo, *p;
-    // struct sockaddr_storage their_addr;
-    // socklen_t their_addr_len;
     char s[INET6_ADDRSTRLEN];
+    default_random_engine generator;
+    bernoulli_distribution distribution(LOSS);
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
@@ -129,12 +129,9 @@ int main(void)
 
         if (!pid)
         {
-            //printf("listener: got packet from %s\n", inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof s));
-            default_random_engine generator;
-            bernoulli_distribution distribution(LOSS);
             printf("\033[33m=====Three-way handshake(Client %d)======\033[m\n", getpid());
             printf("\tReceive a package (SYN)\n");
-            srand(time(NULL));
+            srand(time(NULL) + 5 * getpid());
             int SEQ = rand() % 10000 + 1, ACK, ssthresh = 8, MSS = 1, wnd = 1, state = slow_start, pre_state = slow_start; //rand() % 10000 + 1
             ACK = ++package.seq_num;
             reset(&package);
@@ -171,7 +168,6 @@ int main(void)
             sscanf(package.data, "%d", &num); // receive request num
 
             thread receiving(receiving_pkg);
-            printf("request: %s\n", package.data);
             char *pch = strtok(package.data, " ");
             for (int i = 1; i <= num; i++)
             {
@@ -179,14 +175,13 @@ int main(void)
                 char *flag, *option;
                 pch = strtok(NULL, " ");
                 flag = pch;
-                //cout << "fag = " << flag << endl;
                 if (flag[1] == 'f') // e.g. -f 1.mp4
                 {
 
                     char file_name[100] = {0};
                     pch = strtok(NULL, " ");
                     sprintf(file_name, "%s", pch);
-                    int fd = open(file_name, O_RDONLY);
+                    int fd = open(file_name, O_RDONLY), count = 0;
                     if (fd == -1)
                     {
                         printf("File %s didn't exist.\n", file_name);
@@ -198,7 +193,7 @@ int main(void)
                         sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
                         goto done;
                     }
-                    //wnd = 1;
+                    wnd = 1;
                     printf("\033[32mSending %s\n\033[m", file_name);
                     switch (state)
                     {
@@ -237,8 +232,6 @@ int main(void)
                             if (!i)
                                 sent_front[1] = SEQ;
 
-                            //printf("sent_front = %d, sent_tail = %d, rv = %ld\n", sent_front[0], sent_tail, rv);
-
                             if (rv < 1024)
                             {
                                 //printf("last size = %d\n",sent_buff[sent_tail].data_size);
@@ -260,8 +253,17 @@ int main(void)
                             printf("Sent a package at 1024 byte( seq_num = %u, ack_num = %u )\n", sent_buff[ptr].seq_num, sent_buff[ptr].ack_num);
                             finish = sent_buff[ptr].FIN;
                             finish_detected = ptr;
-                            if ((wnd == 4 && i == 0) || (wnd == 8 && i == wnd - 1))
+
+                            if (((wnd == 4 && i == wnd - 1) && (count % 3 == 0)) || (wnd == 64 && i == wnd - 1))
+                            {
                                 sent_buff[ptr].ACK = 1;
+                                count++;
+                            }
+                            else if ((wnd == 4 && i == wnd - 1) && (count % 3 == 1))
+                            {
+                                sent_buff[ptr].ACK = 2;
+                                count++;
+                            }
                             sendto(sockfd, (char *)&sent_buff[ptr], sizeof(sent_buff[ptr]), 0, (struct sockaddr *)&their_addr, their_addr_len);
                             if (finish)
                                 break;
@@ -271,20 +273,30 @@ int main(void)
 
                         for (int i = 0; i < wnd; i++)
                         {
-                            //printf("sent_front[1] = %d\n", sent_front[1]);
+                            // Handle Synchronized
                             while (rcv_buff_check[rcv_front] == EMPTY)
                                 ;
-                            if (i == 0 && rcv_buff[rcv_front].ACK && state == fast_recovery)
-                            {
-                                ssthresh = wnd / 2;
-                                wnd = 1;
-                                state = slow_start;
-                                printf("\033[34m******Slow start******\033[m\n");
-                            }
-                            else if (rcv_buff[rcv_front].ACK)
+
+                            usleep(3);
+                            if (rcv_buff[rcv_front].ACK)
                             {
                                 printf("Receive three duplicate ACKs\n");
-                                dupli = 1;
+                                printf("\033[34m******Fast recovery******\033[m\n");
+                                if (rcv_buff[rcv_front].ACK == 1)
+                                {
+                                    printf("\033[34m******Slow start******\033[m\n");
+                                    ssthresh = wnd / 2;
+                                    wnd = 1;
+                                    dupli = 1;
+                                    state = slow_start;
+                                }
+                                else if (rcv_buff[rcv_front].ACK == 2)
+                                {
+                                    printf("\033[34m******Congestion avoidance******\033[m\n");
+                                    wnd = ssthresh;
+                                    dupli = 1;
+                                    state = congestion_avoidance;
+                                };
                             }
                             else
                             {
@@ -304,35 +316,23 @@ int main(void)
                             }
                         }
 
-                        if (dupli)
-                        {
+                        if (!dupli)
                             switch (state)
                             {
                             case slow_start:
+                                if (wnd >= ssthresh)
+                                {
+                                    printf("\033[34m******Congestion avoidance******\033[m\n");
+                                    wnd = wnd + 1;
+                                    state = congestion_avoidance;
+                                }
+                                else
+                                    wnd = wnd * 2;
+                                break;
                             case congestion_avoidance:
-                                printf("\033[34m******Fast recovery******\033[m\n");
-                                state = fast_recovery;
+                                wnd = wnd + 1;
                                 break;
                             }
-                        }
-                        else if (wnd >= ssthresh && state == slow_start)
-                        {
-                            printf("\033[34m******Congestion avoidance******\033[m\n");
-                            state = congestion_avoidance;
-                        }
-
-                        switch (state)
-                        {
-                        case slow_start:
-                            wnd = wnd * 2;
-                            break;
-                        case congestion_avoidance:
-                            wnd = wnd + 1;
-                            break;
-                        case fast_recovery:
-
-                            break;
-                        }
                     }
                 done:;
                     close(fd);
@@ -342,7 +342,7 @@ int main(void)
                     pch = strtok(NULL, " ");
                     char ipstr[INET6_ADDRSTRLEN];
                     strcpy(sent_package.data, DNS(pch, ipstr));
-                    //cout << "sent: " << sent_package.data << endl;
+                    
                     sent_package.seq_num = ++SEQ;
                     sent_package.ack_num = ++ACK;
                     sendto(sockfd, (char *)&sent_package, sizeof(sent_package), 0, (struct sockaddr *)&their_addr, their_addr_len);
@@ -350,9 +350,11 @@ int main(void)
                     inet_ntop(their_addr.ss_family, &(((struct sockaddr_in *)&their_addr)->sin_addr), s, sizeof(s));
                     printf("Sent a package to %s : \n", s);
 
-                    //recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
+                    // Handle Synchronized
                     while (rcv_buff_check[rcv_front] == EMPTY)
                         ;
+
+                    // Prevent race conditions
                     myMutex.lock();
                     printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
                     rcv_buff_check[rcv_front] = EMPTY;
@@ -369,8 +371,8 @@ int main(void)
                     else if (flag[1] == 's' && flag[2] == 'u' && flag[3] == 'b') // e.g. -sub 12-23
                         caculate(&sent_package, pch, '-');
 
-                    else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // e.g. -mul -2*2
-                        caculate(&sent_package, pch, '*');
+                    else if (flag[1] == 'm' && flag[2] == 'u' && flag[3] == 'l') // e.g. -mul -2x2
+                        caculate(&sent_package, pch, 'x');
 
                     else if (flag[1] == 'd' && flag[2] == 'i' && flag[3] == 'v') // e.g. -div 9/2
                         caculate(&sent_package, pch, '/');
@@ -380,7 +382,7 @@ int main(void)
 
                     else if (flag[1] == 's' && flag[2] == 'q' && flag[3] == 'r') // e.g. -sqr 2
                         caculate(&sent_package, pch, 0);
-                    else // error
+                    else // Handle error
                     {
                         printf("Invaild flag.\n");
                         continue;
@@ -401,7 +403,6 @@ int main(void)
                     myMutex.unlock();
                 }
             }
-            //printf("rcv_front = %d,  rcv_tail = %d\n", rcv_front, rcv_tail);
             receiving.join();
             printf("\033[32mClient %d transmit successful.\033[m\n\n", getpid());
             close(sockfd);
@@ -418,13 +419,11 @@ void receiving_pkg()
     {
         Package received_package;
         recvfrom(sockfd, (char *)&received_package, sizeof(received_package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
-        //printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", received_package.seq_num, received_package.ack_num);
         if (received_package.END)
         {
             Package end;
             end.END = 1;
             sendto(sockfd, (char *)&end, sizeof(end), 0, (struct sockaddr *)&their_addr, their_addr_len);
-            //printf("end!\n");
             break;
         }
         myMutex.lock();
@@ -539,7 +538,7 @@ void caculate(Package *sent_package, const char *pch, char op = 0)
     case '-':
         ans = a_f - b_f;
         break;
-    case '*':
+    case 'x':
         ans = a_f * b_f;
         break;
     case '/':
