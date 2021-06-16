@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
             printf("\033[32mReceive a DNS result from %s : %s\033[m\n", argv[1], SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\tThe DNS result of \"%s\": %s\n",option, package.data);
+            printf("\tThe DNS result of \"%s\": %s\n", option, package.data);
             ACK = package.seq_num;
             reset(&package);
             package.seq_num = ++SEQ;
@@ -193,7 +193,10 @@ int main(int argc, char *argv[])
             recvfrom(sockfd, (char *)&package, sizeof(package), 0, (struct sockaddr *)&their_addr, &their_addr_len);
             printf("\033[32mReceive a calculation result from %s : %s\033[m\n", argv[1], SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", package.seq_num, package.ack_num);
-            printf("\tCalculation result: %s = %s\n",option, package.data);
+            if (flag[1] == 's' && flag[2] == 'q')
+                printf("\tCalculation result: %s^(1/2) = %s\n", option, package.data);
+            else
+                printf("\tCalculation result: %s = %s\n", option, package.data);
             ACK = package.seq_num;
             reset(&package);
             package.seq_num = ++SEQ;

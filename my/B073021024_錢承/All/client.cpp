@@ -228,7 +228,10 @@ int main(int argc, char *argv[])
             myMutex.lock();
             printf("\033[32mReceive a calculation result from %s : %s\033[m\n", argv[1], SERVERPORT_);
             printf("\tReceive a package ( seq_num = %u, ack_num = %u )\n", rcv_buff[rcv_front].seq_num, rcv_buff[rcv_front].ack_num);
-            printf("\tCalculation result: %s = %s\n", option, rcv_buff[rcv_front].data);
+            if (flag[1] == 's' && flag[2] == 'q')
+                printf("\tCalculation result: %s^(1/2) = %s\n", option, rcv_buff[rcv_front].data);
+            else
+                printf("\tCalculation result: %s = %s\n", option, rcv_buff[rcv_front].data);
             ACK = rcv_buff[rcv_front].seq_num;
             rcv_buff_check[rcv_front] = EMPTY;
             rcv_front = (rcv_front + 1) % MAXBUFLEN;
